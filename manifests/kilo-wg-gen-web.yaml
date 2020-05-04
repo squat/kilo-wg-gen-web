@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/name: kilo-wg-gen-web
+  name: kilo-wg-gen-web
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+  selector:
+    app.kubernetes.io/name: kilo-wg-gen-web
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kilo-wg-gen-web
+  labels:
+    app.kubernetes.io/name: kilo-wg-gen-web
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kilo-wg-gen-web
+  serviceName: kilo-wg-gen-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kilo-wg-gen-web
+    spec:
+      initContainers:
+      - image: squat/kilo-wg-gen-web
+        name: setnode
+        args:
+        - setnode
+        - $(NODE)
+        - --allowed-ips=$(ALLOWED_IPS)
+        - --address-pools=$(ADDRESS_POOLS)
+        - --dir=/data
+        env:
+        - name: NODE
+          value: example
+        - name: ALLOWED_IPS
+          value: 10.5.0.0/16
+        - name: ADDRESS_POOLS
+          value: 10.6.0.0/16
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      containers:
+      - image: squat/kilo-wg-gen-web
+        name: kilo-wg-gen-web
+        args:
+        - --listen=:8081
+        - --dir=/data
+        ports:
+        - containerPort: 8081
+          name: metrics
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      - image: vx3r/wg-gen-web
+        name: wg-gen-web
+        env:
+        - name: PORT
+          value: '8080'
+        - name: WG_CONF_DIR
+          value: /data
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      serviceAccountName: kilo-wg-gen-web
+  volumeClaimTemplates:
+  - metadata:
+      labels:
+        app.kubernetes.io/name: kilo-wg-gen-web
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kilo-wg-gen-web
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kilo-wg-gen-web
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - kilo.squat.ai
+  resources:
+  - peers
+  verbs:
+  - create
+  - delete
+  - update
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kilo-wg-gen-web
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kilo-wg-gen-web
+subjects:
+  - kind: ServiceAccount
+    name: kilo-wg-gen-web
+    namespace: default
