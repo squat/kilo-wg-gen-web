@@ -394,7 +394,7 @@ func translate(cfg *model.Client) *v1alpha1.Peer {
 			},
 		},
 		Spec: v1alpha1.PeerSpec{
-			AllowedIPs: cfg.AllowedIPs,
+			AllowedIPs: cfg.Address,
 			PublicKey:  cfg.PublicKey,
 		},
 	}
