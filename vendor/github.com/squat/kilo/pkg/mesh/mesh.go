@@ -252,7 +252,7 @@ func New(backend Backend, enc encapsulation.Encapsulator, granularity Granularit
 	}
 	level.Debug(logger).Log("msg", fmt.Sprintf("using %s as the private IP address", privateIP.String()))
 	level.Debug(logger).Log("msg", fmt.Sprintf("using %s as the public IP address", publicIP.String()))
-	ipTables, err := iptables.New(len(subnet.IP))
+	ipTables, err := iptables.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to IP tables controller: %v", err)
 	}
@@ -478,15 +478,16 @@ func (m *Mesh) handleLocal(n *Node) {
 	// Take leader, location, and subnet from the argument, as these
 	// are not determined by kilo.
 	local := &Node{
-		Endpoint:    n.Endpoint,
-		Key:         m.pub,
-		InternalIP:  n.InternalIP,
-		LastSeen:    time.Now().Unix(),
-		Leader:      n.Leader,
-		Location:    n.Location,
-		Name:        m.hostname,
-		Subnet:      n.Subnet,
-		WireGuardIP: m.wireGuardIP,
+		Endpoint:            n.Endpoint,
+		Key:                 m.pub,
+		InternalIP:          n.InternalIP,
+		LastSeen:            time.Now().Unix(),
+		Leader:              n.Leader,
+		Location:            n.Location,
+		Name:                m.hostname,
+		PersistentKeepalive: n.PersistentKeepalive,
+		Subnet:              n.Subnet,
+		WireGuardIP:         m.wireGuardIP,
 	}
 	if !nodesAreEqual(n, local) {
 		level.Debug(m.logger).Log("msg", "local node differs from backend")
@@ -820,7 +821,7 @@ func peersAreEqual(a, b *Peer) bool {
 			return false
 		}
 	}
-	return string(a.PublicKey) == string(b.PublicKey) && a.PersistentKeepalive == b.PersistentKeepalive
+	return string(a.PublicKey) == string(b.PublicKey) && string(a.PresharedKey) == string(b.PresharedKey) && a.PersistentKeepalive == b.PersistentKeepalive
 }
 
 func ipNetsEqual(a, b *net.IPNet) bool {

@@ -15,7 +15,7 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/procfs v0.0.3 // indirect
 	github.com/spf13/cobra v0.0.6
-	github.com/squat/kilo v0.0.0-20200310115720-8e8eb1a213ef
+	github.com/squat/kilo v0.0.0-20200505093643-0a10dc921c0f
 	gitlab.127-0-0-1.fr/vx3r/wg-gen-web v0.0.0-20200430103518-c829995a4277
 	golang.org/x/crypto v0.0.0-20200220183623-bac4c82f6975 // indirect
 	golang.org/x/lint v0.0.0-20190409202823-959b441ac422

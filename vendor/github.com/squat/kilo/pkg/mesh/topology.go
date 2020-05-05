@@ -366,17 +366,18 @@ func (t *Topology) Conf() *wireguard.Conf {
 		peer := &wireguard.Peer{
 			AllowedIPs:          s.allowedIPs,
 			Endpoint:            s.endpoint,
-			PublicKey:           s.key,
 			PersistentKeepalive: t.persistentKeepalive,
+			PublicKey:           s.key,
 		}
 		c.Peers = append(c.Peers, peer)
 	}
 	for _, p := range t.peers {
 		peer := &wireguard.Peer{
 			AllowedIPs:          p.AllowedIPs,
-			PersistentKeepalive: t.persistentKeepalive,
-			PublicKey:           p.PublicKey,
 			Endpoint:            p.Endpoint,
+			PersistentKeepalive: t.persistentKeepalive,
+			PresharedKey:        p.PresharedKey,
+			PublicKey:           p.PublicKey,
 		}
 		c.Peers = append(c.Peers, peer)
 	}
@@ -402,9 +403,11 @@ func (t *Topology) AsPeer() *wireguard.Peer {
 // PeerConf generates a WireGuard configuration file for a given peer in a Topology.
 func (t *Topology) PeerConf(name string) *wireguard.Conf {
 	var pka int
+	var psk []byte
 	for i := range t.peers {
 		if t.peers[i].Name == name {
 			pka = t.peers[i].PersistentKeepalive
+			psk = t.peers[i].PresharedKey
 			break
 		}
 	}
@@ -414,6 +417,7 @@ func (t *Topology) PeerConf(name string) *wireguard.Conf {
 			AllowedIPs:          s.allowedIPs,
 			Endpoint:            s.endpoint,
 			PersistentKeepalive: pka,
+			PresharedKey:        psk,
 			PublicKey:           s.key,
 		}
 		c.Peers = append(c.Peers, peer)
@@ -436,25 +440,27 @@ func (t *Topology) PeerConf(name string) *wireguard.Conf {
 // Rules returns the iptables rules required by the local node.
 func (t *Topology) Rules(cni bool) []iptables.Rule {
 	var rules []iptables.Rule
-	rules = append(rules, iptables.NewChain("nat", "KILO-NAT"))
+	rules = append(rules, iptables.NewIPv4Chain("nat", "KILO-NAT"))
+	rules = append(rules, iptables.NewIPv6Chain("nat", "KILO-NAT"))
 	if cni {
-		rules = append(rules, iptables.NewRule("nat", "POSTROUTING", "-m", "comment", "--comment", "Kilo: jump to NAT chain", "-s", t.subnet.String(), "-j", "KILO-NAT"))
+		rules = append(rules, iptables.NewRule(iptables.GetProtocol(len(t.subnet.IP)), "nat", "POSTROUTING", "-m", "comment", "--comment", "Kilo: jump to NAT chain", "-s", t.subnet.String(), "-j", "KILO-NAT"))
 	}
 	for _, s := range t.segments {
-		rules = append(rules, iptables.NewRule("nat", "KILO-NAT", "-m", "comment", "--comment", "Kilo: do not NAT packets destined for WireGuared IPs", "-d", s.wireGuardIP.String(), "-j", "RETURN"))
+		rules = append(rules, iptables.NewRule(iptables.GetProtocol(len(s.wireGuardIP)), "nat", "KILO-NAT", "-m", "comment", "--comment", "Kilo: do not NAT packets destined for WireGuared IPs", "-d", s.wireGuardIP.String(), "-j", "RETURN"))
 		for _, aip := range s.allowedIPs {
-			rules = append(rules, iptables.NewRule("nat", "KILO-NAT", "-m", "comment", "--comment", "Kilo: do not NAT packets destined for known IPs", "-d", aip.String(), "-j", "RETURN"))
+			rules = append(rules, iptables.NewRule(iptables.GetProtocol(len(aip.IP)), "nat", "KILO-NAT", "-m", "comment", "--comment", "Kilo: do not NAT packets destined for known IPs", "-d", aip.String(), "-j", "RETURN"))
 		}
 	}
 	for _, p := range t.peers {
 		for _, aip := range p.AllowedIPs {
 			rules = append(rules,
-				iptables.NewRule("nat", "POSTROUTING", "-m", "comment", "--comment", "Kilo: jump to NAT chain", "-s", aip.String(), "-j", "KILO-NAT"),
-				iptables.NewRule("nat", "KILO-NAT", "-m", "comment", "--comment", "Kilo: do not NAT packets destined for peers", "-d", aip.String(), "-j", "RETURN"),
+				iptables.NewRule(iptables.GetProtocol(len(aip.IP)), "nat", "POSTROUTING", "-m", "comment", "--comment", "Kilo: jump to NAT chain", "-s", aip.String(), "-j", "KILO-NAT"),
+				iptables.NewRule(iptables.GetProtocol(len(aip.IP)), "nat", "KILO-NAT", "-m", "comment", "--comment", "Kilo: do not NAT packets destined for peers", "-d", aip.String(), "-j", "RETURN"),
 			)
 		}
 	}
-	rules = append(rules, iptables.NewRule("nat", "KILO-NAT", "-m", "comment", "--comment", "Kilo: NAT remaining packets", "-j", "MASQUERADE"))
+	rules = append(rules, iptables.NewIPv4Rule("nat", "KILO-NAT", "-m", "comment", "--comment", "Kilo: NAT remaining packets", "-j", "MASQUERADE"))
+	rules = append(rules, iptables.NewIPv6Rule("nat", "KILO-NAT", "-m", "comment", "--comment", "Kilo: NAT remaining packets", "-j", "MASQUERADE"))
 	return rules
 }
 
@@ -500,6 +506,7 @@ func deduplicatePeerIPs(peers []*Peer) []*Peer {
 			Peer: wireguard.Peer{
 				Endpoint:            peer.Endpoint,
 				PersistentKeepalive: peer.PersistentKeepalive,
+				PresharedKey:        peer.PresharedKey,
 				PublicKey:           peer.PublicKey,
 			},
 		}
