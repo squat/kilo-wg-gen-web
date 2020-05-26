@@ -122,6 +122,6 @@ roleRef:
   kind: ClusterRole
   name: kilo-wg-gen-web
 subjects:
-  - kind: ServiceAccount
-    name: kilo-wg-gen-web
-    namespace: default
+- kind: ServiceAccount
+  name: kilo-wg-gen-web
+  namespace: default
