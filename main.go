@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/go-kit/kit/log"
@@ -14,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	kiloclient "github.com/squat/kilo/pkg/k8s/clientset/versioned"
+	"gitlab.127-0-0-1.fr/vx3r/wg-gen-web/model"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -110,7 +114,18 @@ func runCmd(dir *string, kc *kiloclient.Interface, listen *string, logger *log.L
 			prometheus.NewGoCollector(),
 			prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
 		)
-		c := newController(*dir, *kc, *logger, r)
+		cfg := new(model.Server)
+		j, err := ioutil.ReadFile(path.Join(*dir, serverConfigurationName))
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("read configuration file %q: %w", serverConfigurationName, err)
+		}
+		if j != nil {
+			if err := json.Unmarshal(j, cfg); err != nil {
+				return fmt.Errorf("unmarshal configuration as JSON: %w", err)
+			}
+		}
+
+		c := newController(*dir, *kc, *logger, r, cfg)
 
 		var g run.Group
 		{

@@ -35,6 +35,7 @@ type controller struct {
 	lister   v1alpha1listers.PeerLister
 	logger   log.Logger
 	queue    workqueue.RateLimitingInterface
+	server   *model.Server
 
 	mu    sync.Mutex
 	peers map[string]*v1alpha1.Peer
@@ -44,7 +45,7 @@ type controller struct {
 	reconcileErrors   prometheus.Counter
 }
 
-func newController(dir string, kc kiloclient.Interface, logger log.Logger, reg prometheus.Registerer) *controller {
+func newController(dir string, kc kiloclient.Interface, logger log.Logger, reg prometheus.Registerer, server *model.Server) *controller {
 	selector := labels.Set{managedByLabelKey: managedByLabelValue}.AsSelector()
 	pi := v1alpha1informers.NewFilteredPeerInformer(kc, 5*time.Minute, nil, func(options *metav1.ListOptions) { options.LabelSelector = selector.String() })
 	if logger == nil {
@@ -57,7 +58,9 @@ func newController(dir string, kc kiloclient.Interface, logger log.Logger, reg p
 		lister:   v1alpha1listers.NewPeerLister(pi.GetIndexer()),
 		logger:   logger,
 		queue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "service-reflector"),
-		peers:    make(map[string]*v1alpha1.Peer),
+		server:   server,
+
+		peers: make(map[string]*v1alpha1.Peer),
 
 		peersG: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "kilo_wg_gen_web_peers",
@@ -153,7 +156,7 @@ func (c *controller) refresh() error {
 		if !cfg.Enable {
 			continue
 		}
-		peers[cfg.Id] = translate(cfg)
+		peers[cfg.Id] = translate(cfg, c.server.PersistentKeepalive)
 		n++
 	}
 
@@ -230,7 +233,7 @@ func (c *controller) sync(name string) error {
 	}
 
 	// If the peers are equal, then our work is done.
-	if len(peer.Spec.AllowedIPs) == len(c.peers[name].Spec.AllowedIPs) && strings.Join(peer.Spec.AllowedIPs, ",") == strings.Join(c.peers[name].Spec.AllowedIPs, ",") && len(peer.Spec.PublicKey) == len(c.peers[name].Spec.PublicKey) {
+	if len(peer.Spec.AllowedIPs) == len(c.peers[name].Spec.AllowedIPs) && strings.Join(peer.Spec.AllowedIPs, ",") == strings.Join(c.peers[name].Spec.AllowedIPs, ",") && len(peer.Spec.PublicKey) == len(c.peers[name].Spec.PublicKey) && peer.Spec.PersistentKeepalive == c.peers[name].Spec.PersistentKeepalive {
 		return nil
 	}
 
@@ -244,7 +247,12 @@ func (c *controller) handle(obj interface{}) {
 	c.queue.Add(obj.(*v1alpha1.Peer).Name)
 }
 
-func translate(cfg *model.Client) *v1alpha1.Peer {
+func translate(cfg *model.Client, defaultPersistentKeepalive int) *v1alpha1.Peer {
+	var pka int
+	if !cfg.IgnorePersistentKeepalive {
+		pka = defaultPersistentKeepalive
+	}
+
 	return &v1alpha1.Peer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: cfg.Id,
@@ -253,9 +261,10 @@ func translate(cfg *model.Client) *v1alpha1.Peer {
 			},
 		},
 		Spec: v1alpha1.PeerSpec{
-			AllowedIPs:   cfg.Address,
-			PresharedKey: cfg.PresharedKey,
-			PublicKey:    cfg.PublicKey,
+			AllowedIPs:          cfg.Address,
+			PersistentKeepalive: pka,
+			PresharedKey:        cfg.PresharedKey,
+			PublicKey:           cfg.PublicKey,
 		},
 	}
 }
