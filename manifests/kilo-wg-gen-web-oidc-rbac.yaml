@@ -5,10 +5,10 @@ metadata:
     app.kubernetes.io/name: kilo-wg-gen-web
   name: kilo-wg-gen-web
 spec:
+  clusterIP: None
   ports:
   - name: http
-    port: 80
-    targetPort: 8080
+    port: 8080
   selector:
     app.kubernetes.io/name: kilo-wg-gen-web
 ---
